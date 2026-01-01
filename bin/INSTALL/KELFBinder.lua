@@ -17,7 +17,9 @@ FONTPATH = "common/font2.ttf"
 HDD_STATUS = 3
 
 Drawbar(X_MID, Y_MID, 40, Color.new(255, 0, 0))
-Secrman.init()
+RPC_STATUS = Secrman.rpc_init()
+Drawbar(X_MID, Y_MID, 40, Color.new(255, 255, 255))
+
 ROMVERN = KELFBinder.getROMversion()
 KELFBinder.InitConsoleModel()
 local console_model_sub = KELFBinder.getConsoleModel()
@@ -32,6 +34,12 @@ if doesFileExist("rom0:PSXVER") then
   System.log("rom0:PSXVER FOUND\n")
   IS_PSX = true
   REAL_IS_PSX = true
+end
+
+if doesFileExist("rom0:DAEMON") then
+  Screen.clear(Color.new(0xff, 0, 0))
+  Screen.flip()
+  error("\tARCADE DETECTED.\n\tABORTING PROGRAM EXECUTION")
 end
 ---PSX
 
@@ -68,9 +76,46 @@ local CHKF = Graphics.loadImageEmbedded(4)
 --if doesFileExist("INSTALL/EXTINST.lua") then dofile("INSTALL/EXTINST.lua") else
 --  System.log("### Could not access INSTALL/EXTINST.lua\n")
 --end
+
+---parse directory and append paths based on files found inside `SOURCEDIR` into `SOURCE_TABLE` and `DEST_TABLE`.
+---if at least 1 file is found, the value of `DESTNTDIR` is added into `MKDIR_TABLE`
+---@param SOURCEDIR string relative path to parse for registering installation files
+---@param DESTNTDIR string destination path on target device
+---@param T table installation table
+function Update_InstTable(SOURCEDIR, DESTNTDIR, T)
+  if type(T.source) ~= "table" or type(T.target) ~= "table" or type(T.dirs) ~= "table" then
+    error("Invalid installation table passed to table updater")
+  end
+  local tmp = System.listDirectory(SOURCEDIR)
+  local COUNT = 0 -- Ammount of files that will be installed
+  local add_dir = true
+  if tmp == nil then return 0 end
+  for x = 1, #tmp do
+    if not tmp[x].directory then
+        table.insert(T.source, SOURCEDIR.."/"..tmp[x].name)
+        table.insert(T.target, DESTNTDIR.."/"..tmp[x].name)
+        COUNT = COUNT+1
+    end
+  end
+  if COUNT > 0 then --at least one file will be installed... append to mkdir struct
+    for x = 1, #T.dirs do
+      if T.dirs[x] == DESTNTDIR then
+        add_dir = false
+      end
+    end
+    if add_dir then
+      table.insert(T.dirs, DESTNTDIR)
+    end
+    System.log(string.format("Installation table: %d files listed to be moved from '%s' to target:/%s'\n", COUNT, SOURCEDIR, DESTNTDIR))
+  end
+  return COUNT
+end
+
+Drawbar(X_MID, Y_MID, 60, Color.new(0, 255, 0))
+System.log("declaring installation tables for PS2BBL\n")
 dofile("INSTALL/EXTINST.lua")
-System.sleep(1)
 Drawbar(X_MID, Y_MID, 70, Color.new(255, 255, 255))
+
 Graphics.setImageFilters(LOGO, LINEAR)
 Graphics.setImageFilters(BG, LINEAR)
 Graphics.setImageFilters(BGERR, LINEAR)
@@ -103,7 +148,9 @@ Drawbar(X_MID, Y_MID, 90, Color.new(255, 255, 255))
 if doesFileExist(FONTPATH) then
   Font.ftInit()
   LSANS = Font.ftLoad(FONTPATH)
+  LSANS_SMALL = Font.ftLoad(FONTPATH)
   Font.ftSetCharSize(LSANS, 940, 940)
+  Font.ftSetCharSize(LSANS_SMALL, 840, 840)
 else
   Screen.clear(Color.new(128, 128, 0)) Screen.flip() while true do end
 end
@@ -125,12 +172,13 @@ function ORBMAN(Q)
 end
 
 function ORBMANex(IMG, Q, X, Z, POW)
-  R = R+RINCREMENT
+  time = os.clock()*3
   for l = 1, 7 do
-		local C = math.cos(((R + LightsSeed + l*17)*0.01 *(l+10)*0.1)) -- THANKS to AAP for the math from his OSDSYS reversal
-		local S = math.sin(((R + LightsSeed + l*15)*0.005*(l+10)*0.1))
-    --Graphics.drawCircle(180+(80*math.cos((S+l))), 180+(80*math.sin((S+l))), 4.0, Color.new(255, 0, 0, Q))
-    Graphics.drawImage(IMG, X+(POW*math.cos((S+l))), Z+(POW*math.sin((S+l))), Color.new(128, 128, 128, Q))
+    local angle = time * l * math.pi / 30
+    local radius = POW
+    local x = radius * math.cos(angle) + 150
+    local y = radius * math.sin(angle) + 150
+    Graphics.drawScaleImage(IMG, x, y, 32, 32, Color.new(128, 128, 128, Q))
   end
 end
 
@@ -221,6 +269,24 @@ function PreExtraAssetsInstall(FILECOUNT, FOLDERCOUNT, SIZECOUNT)
 
   return FILECOUNT, FOLDERCOUNT, SIZECOUNT
 end
+
+function InstallDVDPlayerAssets(port, cur, total, dvdfolder)
+  ReportProgress(cur, total, "", LNG_INSTALLING_DVDPL)
+  local ret = 0
+  if #DVDPL_INST_TABLE.source > 0 and MUST_INSTALL_EXTRA_FILES then
+    for i = 1, #DVDPL_INST_TABLE.source do
+      if DVDPL_INST_TABLE.target[i] == "/dvdplayer.elf" then goto skipfile end
+      ReportProgress(cur+i, total, dvdfolder..DVDPL_INST_TABLE.target[i], LNG_INSTALLING_EXTRA)
+      if doesFileExist(DVDPL_INST_TABLE.source[i]) then -- CHECK FOR EXISTENCE, OTHERWISE, PROGRAM CRASHES!
+        ret = System.copyFile(DVDPL_INST_TABLE.source[i], string.format("mc%d:/%s%s", port, dvdfolder, DVDPL_INST_TABLE.target[i]))
+        if ret < 0 then return ret end
+      end
+      ::skipfile::
+    end
+  end
+return 1
+end
+
 function InstallExtraAssets(port, cur, total)
   ReportProgress(cur, total)
   local ret = 0
@@ -233,7 +299,7 @@ function InstallExtraAssets(port, cur, total)
   end
   if #MC_INST_TABLE.source > 0 and MUST_INSTALL_EXTRA_FILES then
     for i = 1, #MC_INST_TABLE.source do
-      ReportProgress(cur+i, total)
+      ReportProgress(cur+i, total, MC_INST_TABLE.target[i])
       if doesFileExist(MC_INST_TABLE.source[i]) then -- CHECK FOR EXISTENCE, OTHERWISE, PROGRAM CRASHES!
         ret = System.copyFile(MC_INST_TABLE.source[i], string.format("mc%d:/%s", port, MC_INST_TABLE.target[i]))
         if ret < 0 then return ret end
@@ -629,18 +695,18 @@ function DVDPlayerINST(port, slot, target_region)
   local RET
   local TARGET_FOLD = KELFBinder.getDVDPlayerFolder(target_region)
   local TARGET_KELF = string.format("mc%d:/%s/dvdplayer.elf", port, TARGET_FOLD)
-
+  local tinst = #DVDPL_INST_TABLE.target+2
   if doesFileExist(DVDPLAYERUPDATE) then
     System.AllowPowerOffButton(0)
-    Screen.clear()
-    Graphics.drawScaleImage(BG, 0.0, 0.0, SCR_X, SCR_Y)
-    Font.ftPrint(LSANS, X_MID, 20, 8, 600, 64, string.format(LNG_INSTPMPT, TARGET_KELF))
-    Screen.flip()
+    ReportProgress(0, tinst, (LNG_INSTPMPT):format(TARGET_KELF), LNG_INSTALLING_DVDPL)
     System.createDirectory(string.format("mc%d:/%s", port, TARGET_FOLD))
     KELFBinder.setSysUpdateFoldProps(port, slot, TARGET_FOLD)
     RET = Secrman.downloadfile(port, slot, DVDPLAYERUPDATE, TARGET_KELF)
-    System.AllowPowerOffButton(1)
     if RET < 0 then Secrerr(RET) return end
+    RET = InstallDVDPlayerAssets(port, 1, tinst, TARGET_FOLD)
+    if RET < 0 then Secrerr(RET) return end
+    ReportProgress(tinst, tinst, "", LNG_INSTALLING_DVDPL)
+    System.AllowPowerOffButton(1)
     Secrerr(RET)
   else
     Secrerr(-203)
@@ -659,7 +725,14 @@ function NormalInstall(port, slot)
   local FILECOUNT = 2 -- icons + whatever updates you push
   local NEEDED_SPACE = 1024 + 964 -- 1kb + icon.sys size to begin with
   local AvailableSpace = 0
+
   NEEDED_SPACE = NEEDED_SPACE + GetFileSizeX(SYSUPDATE_ICON_SYS_RES)
+  if doesFileExist(TEST_KELF) then
+    RET, _, _, _ = Secrman.Testdownloadfile(port, slot, TEST_KELF)
+  else
+    RET, _, _, _ = Secrman.Testdownloadfile(port, slot, KERNEL_PATCH_100)
+  end
+  if RET < 0 then Secrerr(RET) return end
 
   if IS_PSX then
     NEEDED_SPACE = NEEDED_SPACE + GetFileSizeX(SYSUPDATE_PSX)
@@ -709,7 +782,7 @@ function NormalInstall(port, slot)
     if RET < 0 then Secrerr(RET) return end
   end
   -- KELF install finished! deal with extra files now!
-  ReportProgress(4, tot)
+  ReportProgress(4, tot, "icon.sys")
   if REG == 0 or IS_PSX then -- JPN
     System.copyFile("INSTALL/ASSETS/JPN.sys", string.format("%s/icon.sys", TARGET_FOLD))
   elseif REG == 1 or REG == 2 then --USA or ASIA
@@ -724,14 +797,7 @@ function NormalInstall(port, slot)
   ReportProgress(5, tot)
   RET = InstallExtraAssets(port, 5, tot)
   System.AllowPowerOffButton(1)
-  local Z = 0x80
-  while Z > 0 do
-    Screen.clear()
-    Graphics.drawScaleImage(BG, 0.0, 0.0, SCR_X, SCR_Y)
-    DrawbarNbg(X_MID, Y_MID, 100, Color.new(0xff, 0xff, 0xff, Z))
-    Screen.flip()
-    Z = Z-2
-  end
+  ReportProgressFadeEnd()
   Secrerr(RET)
 end
 
@@ -1207,6 +1273,11 @@ function Report(RET, IS_GOOD, IS_A_QUESTION)
       elseif RET == 400 then
         Font.ftPrint(LSANS, X_MID, 60,  8, 630, 64, LNG_DEX_MACHINE_WARNING, Color.new(0x80, 0x80, 0, 0x80 - A))
         Font.ftPrint(LSANS, X_MID, 140, 8, 630, 64, LNG_DEX_MACHINE_WARNING_DESC, Color.new(0x80, 0x80, 0x80, 0x80 - A))
+      elseif RET == 666 then
+        Font.ftPrint(LSANS, X_MID, 60,  8, 630, 64, LNG_SECRMAN_REPLACE_FAIL, Color.new(0x80, 0x80, 0, 0x80 - A))
+        Font.ftPrint(LSANS, X_MID, 140, 8, 630, 64, string.format(LNG_SECRMAN_REPLACE_FAIL2, RPC_STATUS), Color.new(0x80, 0x80, 0x80, 0x80 - A))
+        Font.ftPrint(LSANS, X_MID, 160, 8, 630, 64, LNG_SECRMAN_REPLACE_FAIL3, Color.new(0x80, 0x80, 0x80, 0x80 - A))
+        Font.ftPrint(LSANS, X_MID, 180, 8, 630, 64, LNG_SECRMAN_REPLACE_FAIL4, Color.new(0x80, 0x80, 0x80, 0x80 - A))
       end
       if Pads.check(pad, PAD_CROSS) and A == 0 then
         ret = true
@@ -1245,7 +1316,7 @@ function MagicGateTest(port, slot)
   local MESSAGE1 = ""
   local MESSAGE2 = ""
   if doesFileExist(TEST_KELF) then
-    RET, HEADER, KBIT, KCONT = Secrman.Testdownloadfile(port, slot, TEST_KELF) 
+    RET, HEADER, KBIT, KCONT = Secrman.Testdownloadfile(port, slot, TEST_KELF)
   else
     RET, HEADER, KBIT, KCONT = Secrman.Testdownloadfile(port, slot, KERNEL_PATCH_100)
   end
@@ -1271,11 +1342,11 @@ function MagicGateTest(port, slot)
       else
         Font.ftPrint(LSANS, X_MID, 40,  8, 630, 64, LNG_TESTSUCC, Color.new(0x80, 0x80, 0x80, 0x80 - A))
         Font.ftPrint(LSANS, 120, 200, 0, 630, 64, LNG_KELF_HEAD, Color.new(0x80, 0x80, 0x80, 0x80 - A))
-        Font.ftPrint(LSANS, 150, 220, 0, 630, 32, MESSAGE, Color.new(0x80, 0x80, 0, 0x80 - A))
+        Font.ftPrint(LSANS_SMALL, 150, 220, 0, 630, 32, MESSAGE, Color.new(0x80, 0x80, 0, 0x80 - A))
         Font.ftPrint(LSANS, 120, 260, 0, 630, 64, "Kbit:", Color.new(0x80, 0x80, 0x80, 0x80 - A))
-        Font.ftPrint(LSANS, 150, 280, 0, 630, 32, MESSAGE1, Color.new(0x80, 0x80, 0, 0x80 - A))
+        Font.ftPrint(LSANS_SMALL, 150, 280, 0, 630, 32, MESSAGE1, Color.new(0x80, 0x80, 0, 0x80 - A))
         Font.ftPrint(LSANS, 120, 300, 0, 630, 64, "Kc:", Color.new(0x80, 0x80, 0x80, 0x80 - A))
-        Font.ftPrint(LSANS, 150, 320, 0, 630, 32, MESSAGE2, Color.new(0x80, 0x80, 0, 0x80 - A))
+        Font.ftPrint(LSANS_SMALL, 150, 320, 0, 630, 32, MESSAGE2, Color.new(0x80, 0x80, 0, 0x80 - A))
       end
       if RET == (-5) then
         Font.ftPrint(LSANS, X_MID, 60, 8, 630, 64, LNG_EIO, Color.new(0x80, 0x80, 0x80, 0x80 - A))
@@ -1495,7 +1566,13 @@ function PerformExpertINST(port, slot, UPDT)
   Graphics.drawScaleImage(BG, 0.0, 0.0, SCR_X, SCR_Y)
   Font.ftPrint(LSANS, X_MID, 40, 8, 600, 64, LNG_CALCULATING)
   Screen.flip()
-
+  local RETT
+  if doesFileExist(TEST_KELF) then
+    RETT, _, _, _ = Secrman.Testdownloadfile(port, slot, TEST_KELF)
+  else
+    RETT, _, _, _ = Secrman.Testdownloadfile(port, slot, KERNEL_PATCH_100)
+  end
+  if RETT < 0 then Secrerr(RETT) return end
   local AvailableSpace = 0
   local FLAGS = 0
   local SIZE_NEED = 1024 -- FreeMcBoot installed automatically adds 1024 to the needed space counter
@@ -1573,51 +1650,69 @@ function PerformExpertINST(port, slot, UPDT)
 
   if UPDT[0] == 1 then
     cur = cur+1
-    ReportProgress(cur, total)
+    ReportProgress(cur, total, "osdsys.elf")
     RET = Secrman.downloadfile(port, slot, KERNEL_PATCH_100, string.format("mc%d:/BIEXEC-SYSTEM/osdsys.elf", port), 0)
     if RET < 0 then Secrerr(RET) return end
   end
   if UPDT[1] == 1 then
     cur = cur+1
-    ReportProgress(cur, total)
+    ReportProgress(cur, total, "osd110.elf")
     RET = Secrman.downloadfile(port, slot, KERNEL_PATCH_101, string.format("mc%d:/BIEXEC-SYSTEM/osd110.elf", port), 0)
     if RET < 0 then Secrerr(RET) return end
   end
 
   SYSUPDATEPATH = KELFBinder.calculateSysUpdatePath()
+  cur = cur+1
+  ReportProgress(cur, total, SYSUPDATEPATH)
   local RET = Secrman.downloadfile(port, slot, SYSUPDATE_MAIN, string.format("mc%d:/%s", port, SYSUPDATEPATH), FLAGS)
   if RET < 0 then Secrerr(RET) return end
 
-  cur = cur+1
-  ReportProgress(cur, total)
 
   if NEEDS_JPN then
     KELFBinder.setSysUpdateFoldProps(port, slot, "BIEXEC-SYSTEM")
-    cur = cur+1 ReportProgress(cur, total)
+    cur = cur+1 ReportProgress(cur, total, SYSUPDATE_ICON_SYS)
     System.copyFile("INSTALL/ASSETS/JPN.sys", string.format("mc%d:/%s/icon.sys", port, "BIEXEC-SYSTEM"))
     System.copyFile(SYSUPDATE_ICON_SYS_RES, string.format("mc%d:/%s/%s", port, "BIEXEC-SYSTEM", SYSUPDATE_ICON_SYS))
   end
   if NEEDS_USA then
     KELFBinder.setSysUpdateFoldProps(port, slot, "BAEXEC-SYSTEM")
-    cur = cur+1 ReportProgress(cur, total)
+    cur = cur+1 ReportProgress(cur, total, SYSUPDATE_ICON_SYS)
     System.copyFile("INSTALL/ASSETS/USA.sys", string.format("mc%d:/%s/icon.sys", port, "BAEXEC-SYSTEM"))
     System.copyFile(SYSUPDATE_ICON_SYS_RES, string.format("mc%d:/%s/%s", port, "BAEXEC-SYSTEM", SYSUPDATE_ICON_SYS))
   end
   if NEEDS_EUR then
     KELFBinder.setSysUpdateFoldProps(port, slot, "BEEXEC-SYSTEM")
-    cur = cur+1 ReportProgress(cur, total)
+    cur = cur+1 ReportProgress(cur, total, SYSUPDATE_ICON_SYS)
     System.copyFile("INSTALL/ASSETS/EUR.sys", string.format("mc%d:/%s/icon.sys", port, "BEEXEC-SYSTEM"))
     System.copyFile(SYSUPDATE_ICON_SYS_RES, string.format("mc%d:/%s/%s", port, "BEEXEC-SYSTEM", SYSUPDATE_ICON_SYS))
   end
   if NEEDS_CHN then
     KELFBinder.setSysUpdateFoldProps(port, slot, "BCEXEC-SYSTEM")
-    cur = cur+1 ReportProgress(cur, total)
+    cur = cur+1 ReportProgress(cur, total, SYSUPDATE_ICON_SYS)
     System.copyFile("INSTALL/ASSETS/CHN.sys", string.format("mc%d:/%s/icon.sys", port, "BCEXEC-SYSTEM"))
     System.copyFile(SYSUPDATE_ICON_SYS_RES, string.format("mc%d:/%s/%s", port, "BCEXEC-SYSTEM", SYSUPDATE_ICON_SYS))
   end
 
   RET = InstallExtraAssets(port, cur, total)
-  System.AllowPowerOffButton(1)  local Z = 0x80
+  System.AllowPowerOffButton(1)
+  ReportProgressFadeEnd()
+  Secrerr(RET)
+end
+
+function ReportProgress(prog, total, EXTRASTR, MAINSTR)
+  Screen.clear()
+  Graphics.drawScaleImage(BG, 0.0, 0.0, SCR_X, SCR_Y)
+  local a
+  if type(MAINSTR) == "string" then a = MAINSTR else a = LNG_INSTALLING end
+  Font.ftPrint(LSANS, X_MID, 40, 8, 600, 64, a)
+  if type(EXTRASTR) == "string" then Font.ftPrint(LSANS_SMALL, X_MID, 120, 8, 600, 64, EXTRASTR) end
+  DrawbarNbg(X_MID, Y_MID, 100, Color.new(0xff, 0xff, 0xff, 0x30))
+  DrawbarNbg(X_MID, Y_MID, ((prog * 100) / total), Color.new(0xff, 0xff, 0xff, 0x80))
+  Screen.flip()
+end
+
+function ReportProgressFadeEnd()
+  local Z = 0x80
   while Z > 0 do
     Screen.clear()
     Graphics.drawScaleImage(BG, 0.0, 0.0, SCR_X, SCR_Y)
@@ -1625,16 +1720,6 @@ function PerformExpertINST(port, slot, UPDT)
     Screen.flip()
     Z = Z-2
   end
-  Secrerr(RET)
-end
-
-function ReportProgress(prog, total)
-  Screen.clear()
-  Graphics.drawScaleImage(BG, 0.0, 0.0, SCR_X, SCR_Y)
-  Font.ftPrint(LSANS, X_MID, 40, 8, 600, 64, LNG_INSTALLING)
-  DrawbarNbg(X_MID, Y_MID, 100, Color.new(0xff, 0xff, 0xff, 0x30))
-  DrawbarNbg(X_MID, Y_MID, ((prog * 100) / total), Color.new(0xff, 0xff, 0xff, 0x80))
-  Screen.flip()
 end
 
 function WriteDataToHDD()
@@ -1644,21 +1729,22 @@ function WriteDataToHDD()
   Screen.flip()
   local mountpath
   local current_mount = "NONE"
-  local total = 2 + #HDD_INST_TABLE.source
+  local total = 3 + #HDD_INST_TABLE.source
   local pfs_path
   local pfs_mkdir
-  ReportProgress(1, total)
+  ReportProgress(1, total, LNG_HDD_INSTOPT3)
   HDD.EnableHDDBoot()
+  ReportProgress(2, total, "hdd0:__mbr:MBR.KELF")
   local ret = HDD.InstallBootstrap(SYSUPDATE_HDD_BOOTSTRAP)
-  ReportProgress(1, total)
   if ret < 0 then
     return ret
   end
   for i = 1, #HDD_INST_TABLE.source do
-    ReportProgress(2+i, total)
+    ReportProgress(3+i, total, HDD_INST_TABLE.target[i])
     mountpath, _, pfs_path = GetMountData(HDD_INST_TABLE.target[i]) -- calculate needed paths
     if mountpath ~= current_mount then --different partition...
       System.log("partition change needed '"..mountpath.."'\n")
+      ReportProgress(3+i, total, "MNT: "..mountpath)
       if HDD.MountPartition(mountpath, 0, FIO_MT_RDWR) < 0 then -- ...mount needed one
         System.log("### ERROR Mounting partition"..mountpath.."\n")
         return -5
@@ -1678,14 +1764,7 @@ function WriteDataToHDD()
     end
   end
   HDD.UMountPartition(0)
-  local Z = 0x80
-  while Z > 0 do
-    Screen.clear()
-    Graphics.drawScaleImage(BG, 0.0, 0.0, SCR_X, SCR_Y)
-    DrawbarNbg(X_MID, Y_MID, 100, Color.new(0xff, 0xff, 0xff, Z))
-    Screen.flip()
-    Z = Z-2
-  end
+  ReportProgressFadeEnd()
   return 1
 end
 
@@ -1737,7 +1816,7 @@ function Ask2quit()
     if Pads.check(pad, PAD_CIRCLE) then break end
     if Pads.check(pad, PAD_TRIANGLE) then
       if doesFileExist("INSTALL/CORE/BACKDOOR.ELF") then
-        KELFBinder.DeinitLOG() 
+        KELFBinder.DeinitLOG()
         System.loadELF(System.getbootpath() .. "INSTALL/CORE/BACKDOOR.ELF")
       else
         System.log("BACKDOOR ELF NOT ACCESIBLE\n")
@@ -1771,7 +1850,7 @@ function SystemInfo()
     Screen.clear()
     Graphics.drawScaleImage(BG, 0.0, 0.0, SCR_X, SCR_Y)
     ORBMAN(0x80)
-    Font.ftPrint(LSANS, X_MID, 20, 8, 630, 32, LNG_SYSTEMINFO, Color.new(220, 220, 220, 0x80 - A))
+    Font.ftPrint(LSANS, X_MID, 30, 8, 630, 32, LNG_SYSTEMINFO, Color.new(220, 220, 220, 0x80 - A))
 
     Font.ftPrint(LSANS, 50, 60, 0, 630, 32, string.format("ROMVER = [%s]", ROMVER), Color.new(220, 220, 220, 0x80 - A))
     Font.ftPrint(LSANS, 50, 80, 0, 630, 32, string.format(LNG_CONSOLE_MODEL, KELFBinder.getConsoleModel()),
@@ -1839,6 +1918,18 @@ end
 if KELFBinder.getsystemtype() == 2 then
   Report(400, false, false)
 end
+if KELFBinder.GetIRXInfoByName("secrman_special") == nil then--no secrman special?
+  RPC_STATUS = -10
+  if KELFBinder.GetIRXInfoByName("secrman_for_cex") ~= nil then--check if retail secrman is there
+    RPC_STATUS = -20
+  end
+  if KELFBinder.GetIRXInfoByName("secrman_nomecha") ~= nil then--check if retail secrman is there
+    RPC_STATUS = 0
+  end
+end
+if RPC_STATUS ~= 0 then
+  Report(666, false, false)
+end
 
 if HDD_STATUS == 0 or HDD_STATUS == 1 then
   if HDD.GetSMARTStatus() ~= 0 then
@@ -1854,7 +1945,7 @@ OrbIntro(0)
 while true do
   local TT = MainMenu()
   WaitWithORBS(50)
-  if (TT == 1) then -- SYSTEM UPDATE
+  if (TT == 1 and RPC_STATUS == 0) then -- SYSTEM UPDATE
     local TTT = Installmodepicker()
     WaitWithORBS(50)
     if TTT == 1 then -- NORMAL INST
@@ -1916,7 +2007,7 @@ while true do
       Report(ret, true, false)
       OrbIntro(1)
     end
-  elseif TT == 3 then -- DVDPLAYER
+  elseif TT == 3 and RPC_STATUS == 0 then -- DVDPLAYER
     local port = MemcardPickup()
     WaitWithORBS(20)
     if (port >= 0) then

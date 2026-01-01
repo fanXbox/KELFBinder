@@ -1,16 +1,16 @@
 define HEADER
-                                                                       
 
-  _  _______ _     _____ ____  _           _           
- | |/ / ____| |   |  ___| __ )(_)_ __   __| | ___ _ __ 
+
+  _  _______ _     _____ ____  _           _
+ | |/ / ____| |   |  ___| __ )(_)_ __   __| | ___ _ __
  | ' /|  _| | |   | |_  |  _ \| | '_ \ / _` |/ _ \ '__|
- | . \| |___| |___|  _| | |_) | | | | | (_| |  __/ |   
- |_|\_\_____|_____|_|   |____/|_|_| |_|\__,_|\___|_|   
-                                                       
-                                                                                
-                           		KELFBinder                 
-                    			Based on Enceladus project                                                               
-                                                                                
+ | . \| |___| |___|  _| | |_) | | | | | (_| |  __/ |
+ |_|\_\_____|_____|_|   |____/|_|_| |_|\__,_|\___|_|
+
+
+                           		KELFBinder
+                    			Based on Enceladus project
+
 endef
 export HEADER
 REVISION = 0
@@ -36,9 +36,10 @@ ifeq ($(DEBUG), 0)
 .SILENT:
 endif
 
+EE_BIN_BASENAME ?= KELFBinder
 EE_BIN_DIR = bin/
-EE_BIN = $(EE_BIN_DIR)KELFBinder.elf
-EE_BIN_PKD = $(EE_BIN_DIR)KELFBinder_pkd.elf
+EE_BIN = $(EE_BIN_DIR)$(EE_BIN_BASENAME).elf
+EE_BIN_PKD = $(EE_BIN_DIR)$(EE_BIN_BASENAME)_pkd.elf
 EE_LIBS = -L$(PS2SDK)/ports/lib -L$(PS2DEV)/gsKit/lib/ \
 		-Lmodules/ds34bt/ee/ -Lmodules/ds34usb/ee/ \
 		-lpatches -lfileXio -lpad -ldebug -llua -lmath3d \
@@ -68,7 +69,7 @@ endif
 ifneq ($(LOG2FILE),0)
   GLOBFLAGS += -DDPRINTF_LOG_TO_FILE
 endif
-BIN2S = $(PS2SDK)/bin/bin2s
+BIN2S = $(PS2SDK)/bin/bin2c
 
 EE_CXXFLAGS += $(GLOBFLAGS)
 EE_CFLAGS += $(GLOBFLAGS)
@@ -77,7 +78,7 @@ EXT_LIBS = modules/ds34usb/ee/libds34usb.a modules/ds34bt/ee/libds34bt.a
 
 APP_CORE = main.o libcdvd_add.o modelname.o system.o pad.o graphics.o render.o \
 		   calc_3d.o gsKit3d_sup.o atlas.o fntsys.o md5.o \
-		   libsecr.o baexec-system_paths.o strUtils.o # sound.o 
+		   libsecr.o baexec-system_paths.o strUtils.o # sound.o
 
 LUA_LIBS =	luaplayer.o luacontrols.o \
 			luatimer.o luaScreen.o luagraphics.o \
@@ -97,6 +98,7 @@ EMBEDDED_RSC = boot.o \
 
 #---------------- Conditions wich affectApp Content ---------------#
 ifeq ($(UDPTTY), 1)
+  EE_BIN_BASENAME = KELFBinder_udptty
   GLOBFLAGS += -DUDPTTY
   EE_CFLAGS += -DUDPTTY
   IOP_MODULES += udptty_irx.o ps2ip_irx.o netman_irx.o smap_irx.o
@@ -140,11 +142,11 @@ endif
 	@echo  rev$(REVISION)
 #--------------------- Embedded ressources ------------------------#
 
-$(EE_ASM_DIR)boot.s: etc/boot.lua | $(EE_ASM_DIR)
+$(EE_ASM_DIR)boot.c: etc/boot.lua | $(EE_ASM_DIR)
 	$(BIN2S) $< $@ bootString
 
 # Images
-$(EE_ASM_DIR)%.s: EMBED/%.png
+$(EE_ASM_DIR)%.c: EMBED/%.png
 	$(BIN2S) $< $@ $(shell basename $< .png)
 #------------------------------------------------------------------#
 
@@ -167,7 +169,7 @@ clean:
 
 	@echo "rm - obj dir"
 	@rm -rf $(EE_OBJS_DIR)
-	
+
 	$(MAKE) -C modules/ds34usb clean
 	$(MAKE) -C modules/ds34bt clean
 
@@ -183,9 +185,9 @@ rebuild: clean all
 
 run:
 	ps2client -h $(PS2LINK_IP) -t 1 execee host:$(EE_BIN)
-       
+
 reset:
-	ps2client -h $(PS2LINK_IP) reset   
+	ps2client -h $(PS2LINK_IP) reset
 
 update_deps:
 	wget -q https://github.com/israpps/wLaunchELF_ISR/releases/download/latest/BOOT-EXFAT.ELF -O bin/INSTALL/CORE/BACKDOOR.ELF
@@ -203,19 +205,19 @@ changelog:
 
 $(EE_OBJS_DIR)%.o: $(EE_SRC_DIR)%.c | $(EE_OBJS_DIR)
 ifeq ($(DEBUG),0)
-	@echo "\033[1m CC  - $@\033[0m"
+	@printf "\033[1m CC  - $@\033[0m\n"
 endif
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 
-$(EE_OBJS_DIR)%.o: $(EE_ASM_DIR)%.s | $(EE_OBJS_DIR)
+$(EE_OBJS_DIR)%.o: $(EE_ASM_DIR)%.c | $(EE_OBJS_DIR)
 ifeq ($(DEBUG),0)
-	@echo "\033[1m ASM - $@\033[0m"
+	@printf "\033[1m ASM - $@\033[0m\n"
 endif
-	$(EE_AS) $(EE_ASFLAGS) $< -o $@
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 
 $(EE_OBJS_DIR)%.o: $(EE_SRC_DIR)%.cpp | $(EE_OBJS_DIR)
 ifeq ($(DEBUG),0)
-	@echo "\033[1m CXX - $@\033[0m"
+	@printf "\033[1m CXX - $@\033[0m\n"
 endif
 	$(EE_CXX) $(EE_CXXFLAGS) $(EE_INCS) -c $< -o $@
 

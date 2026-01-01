@@ -21,7 +21,6 @@
 	LNG_IMPP1 = "Классические режимы установки Free McBoot."
 	LNG_IMPP2 = "Ручной выбор обновлений для установки."
 	LNG_IMPP3 = "Проверка, поддерживает ли карта памяти обновления.\n Тест проводится без записи данных на карту памяти."
-	LNG_IMPMP0 = "Выбор режима установки"
 	LNG_IMPMP1 = "Установка в обычном режиме"
 	LNG_IMPMP2 = "Установка в расширенном режиме"
 	LNG_IMPMP3 = "Установка в экспертном режиме"
@@ -68,6 +67,7 @@
 	LNG_COMPAT0 = "Эта модель консоли не поддерживает обновления системы."
 	LNG_COMPAT1 = "Однако её можно использовать для установки обновлений."
 	LNG_PICK_DVDPLAYER_REG = "Выбор региона обновления DVD-плеера"
+	LNG_INSTALLING_DVDPL = "Установка обновления DVD-плеера..."
 	LNG_JPN = "Япония"
 	LNG_USA = "США"
 	LNG_ASI = "Азия"
@@ -134,5 +134,9 @@
 	LNG_MBR_KELF_SIZE_OUT_OF_BOUNDS = "Размер загрузчика MBR превышает допустимый."
 	LNG_MBR_KELF_SIZE_OUT_OF_BOUNDS2 = "Размер загрузчика не может быть больше 883200 байт."
 	LNG_WARN_DVDPLAYER_PROPIETARY_SOFTWARE = "Программное обеспечение DVD-плеера не поставляется в комплекте по причинам,\n связанным с авторскими правами. Раздобудьте его где-нибудь самостоятельно."
+	LNG_SECRMAN_REPLACE_FAIL = "ОШИБКА SECRMAN"
+	LNG_SECRMAN_REPLACE_FAIL2 = "код ошибки: %d"
+	LNG_SECRMAN_REPLACE_FAIL3 = "Все функции карты памяти отключены"
+	LNG_SECRMAN_REPLACE_FAIL4 = "эта проблема, вероятно, вызвана методом, который вы использовали для запуска KELFBinder"
 
--- Translated by MayanKoyote, superficially tested against build 5404af9 dated 20231005T161900Z
+-- Translated by MayanKoyote, superficially tested against build 9e53b84 dated 20240314T170721Z
